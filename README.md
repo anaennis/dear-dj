@@ -9,6 +9,7 @@ Hosting: GitHub Pages (site) + Supabase (database and accounts) + an optional Cl
 | File | What it is |
 |---|---|
 | `index.html` | The whole website |
+| `config.js` | Your three settings (Supabase URL, publishable key, optional search URL). The only file you edit. |
 | `schema.sql` | Database tables, permissions, spam protection, moderation |
 | `worker.js` | Optional: Spotify search-as-you-type |
 | `demo_data.sql` | Optional: a few sample requests, a playlist and a comment, so the tables aren't empty. Run it after you've signed up once. |
@@ -21,13 +22,13 @@ Hosting: GitHub Pages (site) + Supabase (database and accounts) + an optional Cl
 2. **SQL Editor → New query**, paste all of `schema.sql`, click **Run**.
 3. **Authentication → Sign In / Providers → Email**: turn **off** "Confirm email". For a friends-and-family site this avoids Supabase's tight limit on built-in emails. (Anyone can then sign up with any address, so only share the link with people you trust, or ask me to add an invite code.)
 4. Copy your **Project URL** and your **publishable key** (it starts with `sb_publishable_`). The easiest place is the **Connect** button at the top of the dashboard, or **Project Settings → API Keys**, on the *Publishable and secret API keys* tab. Older projects may only show a legacy key labelled **anon**, which also works.
-5. Open `index.html` and paste them into `SUPABASE_URL` and `SUPABASE_ANON_KEY` near the top (yes, the publishable key goes in the `ANON_KEY` slot. The name is just left over from the older key).
+5. Open `config.js` and paste them between the quotes on the `SUPABASE_URL` and `SUPABASE_ANON_KEY` lines (yes, the publishable key goes in the `ANON_KEY` slot. The name is just left over from the older key). Your settings live in this file so that a new `index.html` never overwrites them.
 
 The publishable (or anon) key is meant to be public. The permissions in `schema.sql` are what protect your data. Never put a **secret** key (`sb_secret_...`) or the legacy `service_role` key anywhere in this project, since those skip all the protections.
 
 ### 2. GitHub Pages (5 minutes)
 
-1. Create a new public repo, e.g. `dear-dj`, and upload `index.html` (the other files are optional to include).
+1. Create a new public repo, e.g. `dear-dj`, and upload `index.html` and `config.js` (the other files are optional to include).
 2. **Settings → Pages → Build and deployment**: Source "Deploy from a branch", branch `main`, folder `/ (root)`.
 3. Your site appears at `https://YOURNAME.github.io/dear-dj/` after a minute or two.
 
@@ -40,6 +41,13 @@ update public.profiles set is_admin = true
 where id = (select id from auth.users where email = 'you@example.com');
 ```
 
+Only change the text between the single quotes, and keep the quotes and everything else exactly as written. If you'd rather not type your email, this does the same for the very first account that signed up:
+
+```sql
+update public.profiles set is_admin = true
+where id = (select id from public.profiles order by created_at limit 1);
+```
+
 Reload the site. An **Admin** link appears in the menu.
 
 ### 4. Song search (optional, 15 minutes)
@@ -49,7 +57,7 @@ Skip this and everything still works, people just type songs by hand.
 1. At developer.spotify.com/dashboard, create an app. Note its Client ID and Client secret. Check Spotify's current developer terms while you're there, since they change.
 2. At dash.cloudflare.com → **Workers & Pages → Create → Start with Hello World**. Deploy, then **Edit code** and replace everything with `worker.js`.
 3. **Settings → Variables and Secrets**, add `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` (as a secret) and `ALLOWED_ORIGIN` = `https://YOURNAME.github.io` (no path, no trailing slash).
-4. Paste the worker's URL (`https://something.workers.dev`) into `SEARCH_URL` in `index.html`.
+4. Paste the worker's URL (`https://something.workers.dev`) into `SEARCH_URL` in `config.js`.
 
 ## How moderation works
 

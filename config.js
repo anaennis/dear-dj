@@ -10,5 +10,5 @@ window.CONFIG = {
 
   // Optional: your Cloudflare Worker URL for Spotify search-as-you-type.
   // Leave empty to type songs and artists by hand.
-  SEARCH_URL: ""
+  SEARCH_URL: "https://dear-dj-search.ennis-ana.workers.dev/"
 };

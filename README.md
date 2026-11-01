@@ -1,6 +1,6 @@
 # Dear DJ
 
-A request board for friends and family. Someone lists up to five songs and five artists they love and what they're after (new artists, new songs, or a mood). Anyone else can answer with a Spotify playlist.
+A request board. Someone lists up to five songs and five artists they love and what they're after (new artists, new songs, or a mood). Anyone else can answer with a Spotify playlist.
 
 Hosting: GitHub Pages (site) + Supabase (database and accounts) + an optional Cloudflare Worker (song search). All free at this size.
 
@@ -20,7 +20,7 @@ Hosting: GitHub Pages (site) + Supabase (database and accounts) + an optional Cl
 
 1. Create a free project at supabase.com.
 2. **SQL Editor → New query**, paste all of `schema.sql`, click **Run**.
-3. **Authentication → Sign In / Providers → Email**: turn **off** "Confirm email". For a friends-and-family site this avoids Supabase's tight limit on built-in emails. (Anyone can then sign up with any address, so only share the link with people you trust, or ask me to add an invite code.)
+3. **Authentication → Sign In / Providers → Email**: turn **off** "Confirm email". For a small site this avoids Supabase's tight limit on built-in emails. (Anyone can then sign up with any address, so only share the link with people you trust, or ask me to add an invite code.)
 4. Copy your **Project URL** and your **publishable key** (it starts with `sb_publishable_`). The easiest place is the **Connect** button at the top of the dashboard, or **Project Settings → API Keys**, on the *Publishable and secret API keys* tab. Older projects may only show a legacy key labelled **anon**, which also works.
 5. Open `config.js` and paste them between the quotes on the `SUPABASE_URL` and `SUPABASE_ANON_KEY` lines (yes, the publishable key goes in the `ANON_KEY` slot. The name is just left over from the older key). Your settings live in this file so that a new `index.html` never overwrites them.
 

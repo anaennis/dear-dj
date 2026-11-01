@@ -13,15 +13,8 @@
   })();
 </script>
 
-<!-- ============ EDIT THESE THREE LINES ============ -->
-<script>
-  window.CONFIG = {
-    SUPABASE_URL: "https://fztffodnikttryuoqblr.supabase.co",       // e.g. https://abcdxyz.supabase.co
-    SUPABASE_ANON_KEY: "sb_publishable_byyqGRR_d7uhprZ4INFplg_djX0YpjK",  // the PUBLISHABLE key, starts with sb_publishable_ (older projects: the "anon" key). Safe to publish. NEVER paste a "secret" or "service_role" key here.
-    SEARCH_URL: ""          // optional: your Cloudflare Worker URL for Spotify search. Leave empty to type songs by hand.
-  };
-</script>
-<!-- ================================================= -->
+<!-- Your settings live in config.js (edit that file, not this one) -->
+<script src="config.js"></script>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
 
@@ -453,7 +446,7 @@ async function refreshUser() {
 function renderNav() {
   const page = (location.hash.split('/')[1] || '');
   const link = (href, text, key) => h('a', { href, 'aria-current': page === key ? 'page' : null }, text);
-  navEl.replaceChildren(
+  navEl.replaceChildren(...[
     link('#/', 'Board', ''),
     user ? link('#/new', 'Write a request', 'new') : null,
     user ? link('#/mine', 'My stuff', 'mine') : null,
@@ -463,7 +456,8 @@ function renderNav() {
       onclick: () => setTheme(theme === 'myspace' ? 'clean' : 'myspace') }, theme === 'myspace' ? 'Clean look' : 'Fun look'),
     user
       ? h('button', { class: 'btn small', type: 'button', onclick: async () => { await sb.auth.signOut(); } }, 'Sign out' + (me ? ' (' + me.display_name + ')' : ''))
-      : h('a', { class: 'btn small', href: '#/login' }, 'Sign in'));
+      : h('a', { class: 'btn small', href: '#/login' }, 'Sign in')
+  ].filter(Boolean));
 }
 
 /* =====================================================================
@@ -473,7 +467,7 @@ function viewSetup() {
   mount(h('div', { class: 'stack' },
     h('h1', {}, 'Almost there.'),
     h('p', { class: 'muted' }, 'This site isn’t connected to its database yet.'),
-    h('p', {}, 'Open index.html and fill in SUPABASE_URL and SUPABASE_ANON_KEY near the top, then reload. The README walks through it.')));
+    h('p', {}, 'Open config.js and fill in SUPABASE_URL and SUPABASE_ANON_KEY, then reload. If you already did, check that config.js was uploaded next to index.html. The README walks through it.')));
 }
 
 /* ---------- Board ---------- */

@@ -2,6 +2,8 @@
 
 A request board. Someone lists up to five songs and five artists they love and what they're after (new artists, new songs, or a mood). Anyone else can answer with a Spotify playlist.
 
+There's also **Mixtapes**: a page where anyone can share a playlist they're proud of, no request needed, with a short description and up to five tags. Click a tag to see every mixtape with that tag.
+
 Hosting: GitHub Pages (site) + Supabase (database and accounts) + an optional Cloudflare Worker (song search). All free at this size.
 
 ## Files
@@ -11,8 +13,9 @@ Hosting: GitHub Pages (site) + Supabase (database and accounts) + an optional Cl
 | `index.html` | The whole website |
 | `config.js` | Your three settings (Supabase URL, publishable key, optional search URL). The only file you edit. |
 | `schema.sql` | Database tables, permissions, spam protection, moderation |
+| `add_mixtapes.sql` | Only if your database was set up before Mixtapes existed: adds the Mixtapes table. Run once. |
 | `worker.js` | Optional: Spotify search-as-you-type |
-| `demo_data.sql` | Optional: a few sample requests, a playlist and a comment, so the tables aren't empty. Run it after you've signed up once. |
+| `demo_data.sql` | Optional: a few sample requests, a playlist, a comment and a mixtape, so the tables aren't empty. Run it after you've signed up once. |
 
 ## Setup
 
@@ -63,11 +66,16 @@ Skip this and everything still works, people just type songs by hand.
 
 - **Login required** to post, send playlists, or report.
 - **Comments** go under each playlist (not under the request). Same rules apply: login required, word filter, report button, auto-hide after three reports, and you can delete any comment. People can delete their own.
-- **Rate limits**: 3 requests, 15 playlists, 30 comments and 20 reports per person per day.
+- **Mixtapes** work the same way: login required, word filter (title, description and tags), report button, auto-hide after three reports. Authors and admins can delete them. Tags are lowercase, up to 24 characters, five per mixtape.
+- **Rate limits**: 3 requests, 15 playlists, 5 mixtapes, 30 comments and 20 reports per person per day.
 - **Link checking**: only real `open.spotify.com/playlist/...` links are accepted, and only the 22-character ID is stored.
 - **Word filter**: add lowercase rows to the `blocked_terms` table in Supabase's Table Editor.
 - **Reports**: anyone signed in can report a request or playlist. Three different people reporting something hides it until you review it on the Admin page, where you can dismiss, hide, or hide and ban the author.
 - **Closed requests** stop accepting playlists. Authors can close, reopen or delete their own.
+
+## Adding Mixtapes to a site you already set up
+
+If you ran `schema.sql` before Mixtapes existed, open Supabase's **SQL Editor → New query**, paste all of `add_mixtapes.sql`, and click **Run**. Then upload the new `index.html`. Run it only once. A second run errors with "already exists" and changes nothing.
 
 ## Privacy: where emails live
 

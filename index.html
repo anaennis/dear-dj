@@ -80,6 +80,11 @@
   .comment-form textarea { min-height: 3.2rem; }
   .note-quote { border-left: 3px solid var(--band, var(--accent)); padding-left: 12px; }
   .banner { padding: 12px 14px; }
+  .mix { align-content: start; }
+  .mix iframe { height: 152px; }
+  .mix .desc { white-space: pre-wrap; overflow-wrap: anywhere; }
+  button.pill { font-family: inherit; cursor: pointer; }
+  .tag-preview:empty { display: none; }
 
   form.card { padding: 22px; display: grid; gap: 20px; max-width: 640px; }
   fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
@@ -151,7 +156,7 @@
   html[data-theme="myspace"] .jcard, html[data-theme="myspace"] .sleeve, html[data-theme="myspace"] .pl,
   html[data-theme="myspace"] .case, html[data-theme="myspace"] form.card, html[data-theme="myspace"] .banner,
   html[data-theme="myspace"] dialog.dlg { background: var(--panel); border: 2px solid var(--ms-blue); border-radius: var(--r-card); }
-  html[data-theme="myspace"] .jcard, html[data-theme="myspace"] .sleeve { border-color: var(--band, var(--ms-blue)); }
+  html[data-theme="myspace"] .jcard, html[data-theme="myspace"] .sleeve, html[data-theme="myspace"] .mix { border-color: var(--band, var(--ms-blue)); }
   html[data-theme="myspace"] .jcard:hover { transform: translateY(-2px); box-shadow: 0 0 14px var(--band, var(--accent)); }
   html[data-theme="myspace"] .jcard .top, html[data-theme="myspace"] .sleeve .head { background: var(--band, var(--ms-light)); color: #0B1020; border-bottom: 2px solid #000; }
   html[data-theme="myspace"] .jcard .top h3, html[data-theme="myspace"] .sleeve .head h2 { color: #0B1020; text-shadow: none; }
@@ -227,6 +232,7 @@
   html[data-theme="clean"] form.card, html[data-theme="clean"] .banner, html[data-theme="clean"] dialog.dlg,
   html[data-theme="clean"] .suggest { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); }
   html[data-theme="clean"] .jcard:hover { border-color: var(--text); }
+  html[data-theme="clean"] .mix { border-top: 6px solid var(--band, var(--line)); }
   html[data-theme="clean"] .jcard .top { border-top: 6px solid var(--band, var(--line)); padding: 16px 16px 0; }
   html[data-theme="clean"] .jcard .top svg { display: none; }
   html[data-theme="clean"] .sleeve .head { border-top: 8px solid var(--band, var(--line)); padding: 24px 22px 4px; }
@@ -329,7 +335,7 @@ function setTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
   try { localStorage.setItem('dear-dj-theme', t); } catch (e) { /* private mode: it just won't be remembered */ }
   // Don't wipe a half-written form: only redraw pages that show theme-specific wording.
-  if (/^#\/(new|login)/.test(location.hash)) renderNav(); else route();
+  if (/^#\/(new|login|share)/.test(location.hash)) renderNav(); else route();
 }
 
 const app = document.getElementById('app');
@@ -448,6 +454,7 @@ function renderNav() {
   const link = (href, text, key) => h('a', { href, 'aria-current': page === key ? 'page' : null }, text);
   navEl.replaceChildren(...[
     link('#/', 'Board', ''),
+    link('#/mixtapes', 'Mixtapes', 'mixtapes'),
     user ? link('#/new', 'Write a request', 'new') : null,
     user ? link('#/mine', 'My stuff', 'mine') : null,
     isAdmin ? link('#/admin', 'Admin', 'admin') : null,
@@ -790,13 +797,126 @@ function viewNew() {
       h('div', {}, btn))));
 }
 
+/* ---------- Mixtapes: playlists people are proud of ---------- */
+function parseTags(text) {
+  const out = [];
+  for (const raw of String(text).split(',')) {
+    const t = raw.trim().toLowerCase().replace(/^#+/, '').replace(/\s+/g, ' ').slice(0, 24);
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
+async function viewMixtapes(tagArg) {
+  loading();
+  const { data, error } = await sb.from('mixtapes')
+    .select('id,user_id,spotify_id,title,description,tags,status,created_at,profiles(display_name)')
+    .order('created_at', { ascending: false }).limit(90);
+  if (error) return mount(errorBox(error));
+
+  let filter = tagArg ? decodeURIComponent(tagArg) : null;
+  const tally = new Map();
+  for (const m of data) for (const t of m.tags || []) tally.set(t, (tally.get(t) || 0) + 1);
+  const topTags = [...tally.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 16).map(([t]) => t);
+  if (filter && !topTags.includes(filter)) topTags.unshift(filter);
+
+  const chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Filter by tag' });
+  const grid = h('div', { class: 'grid' });
+  const setFilter = t => { filter = t; draw(); };
+
+  function card(m) {
+    const name = (m.profiles && m.profiles.display_name) || 'someone';
+    const ok = SPOTIFY_ID.test(m.spotify_id);
+    return h('article', { class: 'pl mix', style: '--band:' + band(m.id) },
+      h('h3', {}, m.title),
+      h('p', { class: 'muted' }, 'from ' + name + ' · ' + fmtDate(m.created_at) + (m.status === 'hidden' ? ' · hidden' : '')),
+      m.description ? h('p', { class: 'desc note-quote' }, m.description) : null,
+      (m.tags || []).length ? h('div', { class: 'tags' }, m.tags.map(t =>
+        h('button', { type: 'button', class: 'pill', 'aria-label': 'Show mixtapes tagged ' + t, onclick: () => setFilter(t) }, '#' + t))) : null,
+      ok ? h('iframe', { src: 'https://open.spotify.com/embed/playlist/' + m.spotify_id, loading: 'lazy', allow: 'encrypted-media', title: m.title + ', shared by ' + name }) : null,
+      h('div', { class: 'row' },
+        ok ? h('a', { class: 'btn small', href: 'https://open.spotify.com/playlist/' + m.spotify_id, target: '_blank', rel: 'noopener' }, 'Open in Spotify') : null,
+        user && m.user_id !== user.id ? h('button', { class: 'btn small', type: 'button', onclick: () => report('mixtape', m.id) }, 'Report') : null,
+        (user && m.user_id === user.id) || isAdmin ? h('button', { class: 'btn small danger', type: 'button', onclick: async () => {
+          if (!confirm('Delete this mixtape?')) return;
+          const { error: e } = await sb.from('mixtapes').delete().eq('id', m.id);
+          if (e) return toast(friendly(e), true);
+          toast('Mixtape deleted.');
+          viewMixtapes(filter ? encodeURIComponent(filter) : null);
+        } }, 'Delete') : null));
+  }
+
+  function draw() {
+    chips.replaceChildren(
+      h('button', { type: 'button', class: 'chip' + (!filter ? ' on' : ''), 'aria-pressed': String(!filter), onclick: () => setFilter(null) }, 'Everything'),
+      ...topTags.map(t => h('button', { type: 'button', class: 'chip' + (filter === t ? ' on' : ''), 'aria-pressed': String(filter === t), onclick: () => setFilter(t) }, '#' + t)));
+    const rows = data.filter(m => !filter || (m.tags || []).includes(filter));
+    grid.replaceChildren(...(rows.length ? rows.map(card)
+      : [h('div', { class: 'empty' },
+          h('h3', {}, data.length ? 'Nothing with that tag' : 'No mixtapes yet'),
+          h('p', { class: 'muted' }, data.length ? 'Try another one.' : 'Got a playlist you’re proud of? Share the first one.'))]));
+  }
+
+  draw();
+  mount(
+    h('section', { class: 'hero' },
+      h('h1', {}, 'Mixtapes'),
+      h('p', {}, 'No request needed. Playlists people are proud of, with a few words about why.'),
+      h('div', {}, h('a', { class: 'btn primary', href: user ? '#/share' : '#/login', onclick: () => { if (!user) afterLogin = '#/share'; } }, 'Share a mixtape'))),
+    topTags.length ? chips : null, grid);
+}
+
+function viewShare() {
+  if (!user) return requireLogin();
+  const url = h('input', { type: 'url', id: 'mx-url', required: true, placeholder: 'https://open.spotify.com/playlist/…' });
+  const title = h('input', { type: 'text', id: 'mx-title', required: true, minLength: 3, maxLength: 80, placeholder: 'e.g. Songs for the last warm night of summer' });
+  const desc = h('textarea', { id: 'mx-desc', rows: 4, maxLength: 500, placeholder: 'What’s it for? Why are you proud of it? Any track to listen out for?' });
+  const tags = h('input', { type: 'text', id: 'mx-tags', maxLength: 140, placeholder: 'e.g. late night, jazz, cooking', autocomplete: 'off' });
+  const preview = h('div', { class: 'tags tag-preview', 'aria-live': 'polite' });
+  const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Share it');
+  tags.addEventListener('input', () => {
+    const t = parseTags(tags.value);
+    preview.replaceChildren(...t.slice(0, 5).map(x => h('span', { class: 'pill' }, '#' + x)),
+      t.length > 5 ? h('span', { class: 'hint' }, 'Only the first five are kept.') : null);
+  });
+
+  mount(h('div', { class: 'stack' },
+    h('p', {}, h('a', { href: '#/mixtapes' }, '‹ Back to mixtapes')),
+    h('h2', {}, 'Share a mixtape'),
+    h('p', { class: 'muted' }, 'A playlist you made and love. It doesn’t have to answer a request.'),
+    h('form', {
+      class: 'card',
+      onsubmit: async e => {
+        e.preventDefault();
+        const id = parsePlaylistId(url.value);
+        if (!id) return toast('That doesn’t look like a Spotify playlist link. In Spotify, choose Share, then Copy link to playlist.', true);
+        btn.disabled = true;
+        const { error } = await sb.from('mixtapes').insert({
+          user_id: user.id, spotify_id: id, title: title.value.trim(),
+          description: desc.value.trim() || null, tags: parseTags(tags.value).slice(0, 5)
+        });
+        btn.disabled = false;
+        if (error) return toast(error.code === '23505' ? 'You’ve already shared that playlist.' : friendly(error), true);
+        toast('Mixtape shared.');
+        location.hash = '#/mixtapes';
+      }
+    },
+      h('div', {}, h('label', { for: 'mx-url' }, 'Spotify playlist link'),
+        h('p', { class: 'hint' }, 'In Spotify: Share → Copy link to playlist. Make sure it’s set to public.')), url,
+      h('div', {}, h('label', { for: 'mx-title' }, 'Give it a title'), title),
+      h('div', {}, h('label', { for: 'mx-desc' }, 'A little description (optional)')), desc,
+      h('div', {}, h('label', { for: 'mx-tags' }, 'Tags (optional)'), h('p', { class: 'hint' }, 'Up to five, separated by commas.')), tags, preview,
+      h('div', {}, btn))));
+}
+
 /* ---------- My stuff ---------- */
 async function viewMine() {
   if (!user) return requireLogin();
   loading();
-  const [a, b] = await Promise.all([
+  const [a, b, c] = await Promise.all([
     sb.from('requests').select('id,title,status,created_at,playlists(count)').eq('user_id', user.id).order('created_at', { ascending: false }),
-    sb.from('playlists').select('id,request_id,status,created_at,requests(title)').eq('user_id', user.id).order('created_at', { ascending: false })
+    sb.from('playlists').select('id,request_id,status,created_at,requests(title)').eq('user_id', user.id).order('created_at', { ascending: false }),
+    sb.from('mixtapes').select('id,spotify_id,title,status,created_at').eq('user_id', user.id).order('created_at', { ascending: false })
   ]);
   if (a.error) return mount(errorBox(a.error));
   const li = (href, text, meta) => h('li', {}, h('a', { href }, text), h('span', { class: 'muted' }, ' · ' + meta));
@@ -808,7 +928,13 @@ async function viewMine() {
     h('h2', {}, 'Playlists I’ve sent'),
     (b.data || []).length
       ? h('ul', {}, b.data.map(p => li('#/request/' + p.request_id, (p.requests && p.requests.title) || 'A request', fmtDate(p.created_at) + (p.status === 'hidden' ? ', hidden' : ''))))
-      : h('p', { class: 'muted' }, 'None yet. Pick a request on the board.')));
+      : h('p', { class: 'muted' }, 'None yet. Pick a request on the board.'),
+    h('h2', {}, 'Mixtapes I’ve shared'),
+    (c.data || []).length
+      ? h('ul', {}, c.data.map(m => h('li', {},
+          h('a', { href: 'https://open.spotify.com/playlist/' + m.spotify_id, target: '_blank', rel: 'noopener' }, m.title),
+          h('span', { class: 'muted' }, ' · ' + fmtDate(m.created_at) + (m.status === 'hidden' ? ', hidden' : '')))))
+      : h('p', { class: 'muted' }, 'None yet. ', h('a', { href: '#/share' }, 'Share one'), '.')));
 }
 
 /* ---------- Login / sign up ---------- */
@@ -868,12 +994,15 @@ async function viewAdmin() {
   const reqIds = all.filter(g => g.type === 'request').map(g => g.id);
   const plIds = all.filter(g => g.type === 'playlist').map(g => g.id);
   const cmIds = all.filter(g => g.type === 'comment').map(g => g.id);
-  const [rq, pl, cmt] = await Promise.all([
+  const mxIds = all.filter(g => g.type === 'mixtape').map(g => g.id);
+  const [rq, pl, cmt, mx] = await Promise.all([
     reqIds.length ? sb.from('requests').select('id,title,mood,notes,status,profiles(display_name)').in('id', reqIds) : { data: [] },
     plIds.length ? sb.from('playlists').select('id,spotify_id,note,status,request_id,profiles(display_name)').in('id', plIds) : { data: [] },
-    cmIds.length ? sb.from('comments').select('id,body,status,playlists(request_id),profiles(display_name)').in('id', cmIds) : { data: [] }
+    cmIds.length ? sb.from('comments').select('id,body,status,playlists(request_id),profiles(display_name)').in('id', cmIds) : { data: [] },
+    mxIds.length ? sb.from('mixtapes').select('id,spotify_id,title,description,tags,status,profiles(display_name)').in('id', mxIds) : { data: [] }
   ]);
-  const target = new Map([...(rq.data || []), ...(pl.data || []), ...(cmt.data || [])].map(x => [x.id, x]));
+  const target = new Map([...(rq.data || []), ...(pl.data || []), ...(cmt.data || []), ...(mx.data || [])].map(x => [x.id, x]));
+  const BY = { comment: 'Comment by ', playlist: 'Playlist by ', mixtape: 'Mixtape by ' };
 
   async function act(reportId, action) {
     const { error: e } = await sb.rpc('admin_moderate', { p_report_id: reportId, p_action: action });
@@ -887,11 +1016,13 @@ async function viewAdmin() {
     const author = t && t.profiles ? t.profiles.display_name : 'unknown';
     return h('article', { class: 'case' },
       h('div', { class: 'row spread' },
-        h('strong', {}, g.type === 'request' ? (t ? t.title : 'A deleted request') : (g.type === 'comment' ? 'Comment by ' : 'Playlist by ') + author),
+        h('strong', {}, g.type === 'request' ? (t ? t.title : 'A deleted request') : BY[g.type] + author),
         h('span', { class: 'pill' }, t ? t.status : 'gone')),
       t && g.type === 'request' ? h('p', {}, `By ${author}. ${t.mood || ''} ${t.notes || ''}`) : null,
       t && g.type === 'playlist' ? h('p', {}, h('a', { href: 'https://open.spotify.com/playlist/' + t.spotify_id, target: '_blank', rel: 'noopener' }, 'Open the playlist'), t.note ? ' · ' + t.note : '', ' · ', h('a', { href: '#/request/' + t.request_id }, 'See the request')) : null,
       t && g.type === 'request' ? h('p', {}, h('a', { href: '#/request/' + g.id }, 'Open the request')) : null,
+      t && g.type === 'mixtape' ? h('p', {}, h('a', { href: 'https://open.spotify.com/playlist/' + t.spotify_id, target: '_blank', rel: 'noopener' }, t.title),
+        t.description ? ' · ' + t.description : '', (t.tags || []).length ? ' · ' + t.tags.map(x => '#' + x).join(' ') : '') : null,
       t && g.type === 'comment' ? h('p', {}, '“' + t.body + '”', t.playlists ? [' · ', h('a', { href: '#/request/' + t.playlists.request_id }, 'See the request')] : null) : null,
       h('ul', {}, g.items.map(r => h('li', {}, `${(r.profiles && r.profiles.display_name) || 'someone'}: ${r.reason.replace(/_/g, ' ')}`))),
       h('div', { class: 'row' },
@@ -915,6 +1046,8 @@ async function route() {
   switch (page) {
     case 'request': return arg ? viewRequest(arg) : viewBoard();
     case 'new': return viewNew();
+    case 'mixtapes': return viewMixtapes(arg);
+    case 'share': return viewShare();
     case 'mine': return viewMine();
     case 'login': return viewLogin();
     case 'admin': return viewAdmin();

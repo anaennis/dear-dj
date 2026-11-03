@@ -1,7 +1,7 @@
 -- Dear DJ: optional demo data
 --
 -- Run this AFTER schema.sql and AFTER you've signed up once on your site.
--- It adds three sample requests, a playlist and a comment under the first account
+-- It adds three sample requests, a playlist, a comment and a mixtape under the first account
 -- that signed up, so the board and the tables have something in them.
 --
 -- Paste into Supabase > SQL Editor > New query > Run.
@@ -37,6 +37,11 @@ begin
 
   insert into public.comments (playlist_id, user_id, body)
   values (p1, me, 'Demo comment: this is what a comment looks like.');
+
+  insert into public.mixtapes (user_id, spotify_id, title, description, tags)
+  values (me, '37i9dQZF1DX4sWSpwq3LiO', 'Demo mixtape: peaceful piano',
+          'Demo mixtape. This is what a shared playlist looks like. Delete me any time.',
+          '{calm,piano,focus}');
 end $$;
 
 -- ---------------------------------------------------------------
@@ -45,4 +50,5 @@ end $$;
 --
 --   delete from public.requests
 --   where title in ('Rainy day focus','Road trip, windows down','Songs to cook to');
+--   delete from public.mixtapes where title = 'Demo mixtape: peaceful piano';
 -- ---------------------------------------------------------------

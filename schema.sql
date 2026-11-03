@@ -53,10 +53,30 @@ create table public.comments (
   created_at  timestamptz not null default now()
 );
 
+-- Mixtapes: playlists people are proud of, shared on their own (not answering a request).
+create function public.valid_tags(t text[]) returns boolean
+language sql immutable as $$
+  select cardinality(t) <= 5 and not exists (
+    select 1 from unnest(t) x
+    where x is null or x <> lower(trim(x)) or char_length(x) not between 1 and 24 or x like '%,%')
+$$;
+
+create table public.mixtapes (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  spotify_id  text not null check (spotify_id ~ '^[A-Za-z0-9]{22}$'),
+  title       text not null check (char_length(title) between 3 and 80),
+  description text check (char_length(description) <= 500),
+  tags        text[] not null default '{}' check (public.valid_tags(tags)),
+  status      text not null default 'visible' check (status in ('visible','hidden')),
+  created_at  timestamptz not null default now(),
+  unique (user_id, spotify_id)
+);
+
 create table public.reports (
   id          uuid primary key default gen_random_uuid(),
   reporter_id uuid not null references public.profiles(id) on delete cascade,
-  target_type text not null check (target_type in ('request','playlist','comment')),
+  target_type text not null check (target_type in ('request','playlist','comment','mixtape')),
   target_id   uuid not null,
   reason      text not null check (reason in ('spam','offensive','not_a_playlist','other')),
   resolved    boolean not null default false,
@@ -73,6 +93,8 @@ create index on public.requests (created_at desc);
 create index on public.playlists (request_id);
 create index on public.comments (playlist_id, created_at);
 create index on public.reports (resolved, created_at);
+create index on public.mixtapes (created_at desc);
+create index on public.mixtapes using gin (tags);
 
 ------------------------------------------------------------------
 -- Helper functions
@@ -118,6 +140,8 @@ begin
                            new.top_songs::text, new.top_artists::text));
   elsif tg_table_name = 'comments' then
     txt := lower(new.body);
+  elsif tg_table_name = 'mixtapes' then
+    txt := lower(concat_ws(' ', new.title, new.description, array_to_string(new.tags, ' ')));
   else
     txt := lower(coalesce(new.note, ''));
   end if;
@@ -133,6 +157,8 @@ create trigger requests_text_filter  before insert on public.requests
 create trigger playlists_text_filter before insert on public.playlists
   for each row execute function public.check_blocked_terms();
 create trigger comments_text_filter  before insert on public.comments
+  for each row execute function public.check_blocked_terms();
+create trigger mixtapes_text_filter  before insert on public.mixtapes
   for each row execute function public.check_blocked_terms();
 
 ------------------------------------------------------------------
@@ -155,6 +181,10 @@ begin
     lim := 30;
     select count(*) into n from public.comments
       where user_id = new.user_id and created_at > now() - interval '1 day';
+  elsif tg_table_name = 'mixtapes' then
+    lim := 5;
+    select count(*) into n from public.mixtapes
+      where user_id = new.user_id and created_at > now() - interval '1 day';
   else
     lim := 20;
     select count(*) into n from public.reports
@@ -172,6 +202,8 @@ create trigger requests_rate_limit  before insert on public.requests
 create trigger playlists_rate_limit before insert on public.playlists
   for each row execute function public.enforce_rate_limit();
 create trigger comments_rate_limit  before insert on public.comments
+  for each row execute function public.enforce_rate_limit();
+create trigger mixtapes_rate_limit  before insert on public.mixtapes
   for each row execute function public.enforce_rate_limit();
 create trigger reports_rate_limit   before insert on public.reports
   for each row execute function public.enforce_rate_limit();
@@ -192,6 +224,8 @@ begin
       update public.requests set status = 'hidden' where id = new.target_id;
     elsif new.target_type = 'playlist' then
       update public.playlists set status = 'hidden' where id = new.target_id;
+    elsif new.target_type = 'mixtape' then
+      update public.mixtapes set status = 'hidden' where id = new.target_id;
     else
       update public.comments set status = 'hidden' where id = new.target_id;
     end if;
@@ -222,6 +256,8 @@ begin
       update public.requests set status = 'hidden' where id = r.target_id returning user_id into author;
     elsif r.target_type = 'playlist' then
       update public.playlists set status = 'hidden' where id = r.target_id returning user_id into author;
+    elsif r.target_type = 'mixtape' then
+      update public.mixtapes set status = 'hidden' where id = r.target_id returning user_id into author;
     else
       update public.comments set status = 'hidden' where id = r.target_id returning user_id into author;
     end if;
@@ -233,6 +269,8 @@ begin
       update public.requests set status = 'open' where id = r.target_id and status = 'hidden';
     elsif r.target_type = 'playlist' then
       update public.playlists set status = 'visible' where id = r.target_id and status = 'hidden';
+    elsif r.target_type = 'mixtape' then
+      update public.mixtapes set status = 'visible' where id = r.target_id and status = 'hidden';
     else
       update public.comments set status = 'visible' where id = r.target_id and status = 'hidden';
     end if;
@@ -250,6 +288,7 @@ alter table public.profiles      enable row level security;
 alter table public.requests      enable row level security;
 alter table public.playlists     enable row level security;
 alter table public.comments      enable row level security;
+alter table public.mixtapes      enable row level security;
 alter table public.reports       enable row level security;
 alter table public.blocked_terms enable row level security;  -- no policies = nobody but you can touch it
 
@@ -296,6 +335,14 @@ create policy "write a comment" on public.comments
 create policy "delete own comment" on public.comments
   for delete using (user_id = auth.uid() or public.is_admin());
 
+-- mixtapes: anyone signed in can share one; authors (and admins) can delete
+create policy "read mixtapes" on public.mixtapes
+  for select using (status = 'visible' or user_id = auth.uid() or public.is_admin());
+create policy "share a mixtape" on public.mixtapes
+  for insert with check (user_id = auth.uid() and not public.is_banned() and status = 'visible');
+create policy "delete own mixtape" on public.mixtapes
+  for delete using (user_id = auth.uid() or public.is_admin());
+
 -- reports: anyone signed in can file one, only admins can read them
 create policy "file a report" on public.reports
   for insert with check (reporter_id = auth.uid() and not public.is_banned());
@@ -307,7 +354,7 @@ create policy "admins read reports" on public.reports
 ------------------------------------------------------------------
 
 revoke all on public.profiles, public.requests, public.playlists, public.comments,
-              public.reports, public.blocked_terms from anon, authenticated;
+              public.mixtapes, public.reports, public.blocked_terms from anon, authenticated;
 
 grant usage on schema public to anon, authenticated;
 
@@ -321,6 +368,9 @@ grant update (status) on public.requests to authenticated;
 
 grant select on public.comments to anon, authenticated;
 grant insert, delete on public.comments to authenticated;
+
+grant select on public.mixtapes to anon, authenticated;
+grant insert, delete on public.mixtapes to authenticated;
 
 grant select, insert on public.reports to authenticated;
 
